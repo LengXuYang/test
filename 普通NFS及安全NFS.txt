@@ -1,0 +1,83 @@
+
+• Network File System,网络文件系统
+– 用途:为客户机提供共享使用的文件夹
+– 协议:NFS(TCP/UDP 2049)、RPC(TCP/UDP 111)
+
+• 所需软件包:nfs-utils
+• 系统服务:nfs-server
+
+虚拟机Server0：
+1.安装软件包nfs-utils
+
+2.创建共享目录
+ mkdir /nsd
+ echo  haha > /nsd/abc.txt
+ ls /nsd
+
+3.修改配置文件/etc/exports
+   – 文件夹路径      客户机地址(权限)
+ vim  /etc/exports
+/nsd     *(ro)
+
+4.重起服务nfs-server
+ systemctl restart nfs-server
+ systemctl enable nfs-server
+-------------------------------------------------------------------------------------------------------------------------------------------------
+客户端虚拟机Desktop0
+
+修改配置文件设置挂载: vim  /etc/fstab
+			172.25.0.11:/nsd    /mnt/test   nfs  defaults,_netdev 0 0
+
+ mkdir /mnt/test
+ mount -a
+ df  -h
+**************************************************************************************************************************
+
+=======安全NFS共享=======
+Server0（服务器上的配置）
+1.安全的NFS服务（kerberos） 
+红帽练习环境：lab nfskrb5 setup			//加入kerberos认证领域
+# wget  http://classroom/pub/keytabs/server0.keytab  -O  /etc/krb5.keytab  //下载并部署密钥
+# vim  /etc/exports 				//调整/protected共享设置
+/protected  	172.25.0.0/24(rw,sec=krb5p)
+# systemctl  restart  nfs-server  		//重启NFS服务	
+# systemctl  restart  nfs-secure-server	//重启kerber安全服务
+2)目录 /protected 下包含名为 project 的子目录
+# mkdir  /protected/project
+# chown  ldapuser0  /protected/project	//更改/protected/project的所有者为ldapuser0
+============================================================================
+
+1.安全NFS共享的实现
+
+红帽练习环境：lab nfskrb5 setup		//加入kerberos认证领域
+# wget  http://classroom/pub/keytabs/desktop0.keytab  -O  /etc/krb5.keytab  	//下载并部署密钥
+# systemctl restart nfs-secure 								//启动安全NFS服务
+# vim /etc/fstab	 
+172.25.0.11:/protected  /mnt/nfssecure  nfs  sec=krb5p,_netdev  0  0 		//配置挂载
+
+# mount -a  			//检查并挂载设备
+# df  -hT  /mnt/nfssecure 	//确认挂载结果
+# ssh ldapuser0@127.0.0.1	//用ldapuser0连接自己测试
+[ldapuser0@desktop0 ~]$ cd /mnt/nfssecure/project/			//进入共享目录
+[ldapuser0@desktop0 project]$ touch 2.txt					//创建一个文件验证
+
+
+
+
+
+
+客户端desktop0挂载安全NFS共享时报错：
+# mount -a
+mount.nfs: an incorrect mount option was specified
+原因：客户机的nfs-secure服务没启动
+
+服务器server0挂载错误
+# mount -a
+mount.nfs: access denied ......
+原因：
+1）服务端exports配置记录
+2）服务端的nfs-secure-server没启动
+3）服务端或客户端的/etc/krb5.keytab没有部署/失效/错误
+4）防火墙阻止
+5）客户端fstab配置记录有错误
+
